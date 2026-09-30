@@ -1,6 +1,6 @@
 # Fuzzy-Evolutionary ICU Arrhythmia Pipeline
 
-[![GitHub Pages](https://img.shields.io/badge/Live%20Demo-GitHub%20Pages-00e5a3?style=for-the-badge&logo=github)](https://opmok772008.github.io/algoforge3.0/)
+[![GitHub Pages](https://img.shields.io/badge/Live%20Demo-GitHub%20Pages-00e5a3?style=for-the-badge&logo=github)](https://opmok772008.github.io/algoforge4.0/)
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI%20%7C%20Uvicorn-009688?style=for-the-badge&logo=fastapi)](http://localhost:8000/docs)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue?style=for-the-badge&logo=python)](https://python.org)
 
@@ -137,4 +137,4 @@ git push origin main
 ```
 
 Your live static website is hosted at:
-👉 **[https://opmok772008.github.io/algoforge3.0/](https://opmok772008.github.io/algoforge3.0/)**
+👉 **[https://opmok772008.github.io/algoforge4.0/](https://opmok772008.github.io/algoforge4.0/)**
