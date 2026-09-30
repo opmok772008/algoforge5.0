@@ -3,7 +3,7 @@ backend/validation.py — Automated verification suite matching the problem stat
 1. Clean rhythm: Sensitivity and Precision >= 95%.
 2. Baseline wander: R-peak timing jitter <= 20 ms.
 3. QRS amplitude preservation: At least 85% of true 1.0 mV preserved.
-4. Lethal arrhythmia detection speed: Alerts on VT and VF within 3.0 seconds.
+4. VT and VF are each detected within 3.0 seconds (two separate results).
 5. Severe EMG burst: 0 false lethal alarms in 20 seconds.
 6. Monotonicity: Fuzzy confidence never falls as heart rate rises.
 7. Fixed streaming buffer: Stays fixed at 1500 samples (6 KB) over 60 seconds.
@@ -11,7 +11,7 @@ backend/validation.py — Automated verification suite matching the problem stat
 """
 
 from __future__ import annotations
-from typing import Dict, List, Any
+from typing import Any, Dict, List, Optional
 import numpy as np
 
 from backend.dsp import clean_baseline, detect_rpeaks, compute_sqi
@@ -21,11 +21,14 @@ from backend.ga import DEFAULT_PARAMS, GeneticAlgorithm, score_record
 
 
 class StreamingMonitor:
-    def __init__(self, seed: int = 31, params: Dict[str, Any] = None):
+    """Maintain a bounded ECG buffer and evaluate a synthetic stream in chunks."""
+
+    def __init__(self, seed: int = 31, params: Optional[Dict[str, Any]] = None) -> None:
+        """Create a monitor with a fixed-size float32 ring-like sliding buffer."""
         self.fs = 250
         self.buffer_size = 1500  # 6 seconds = 1500 float32 samples = 6000 bytes (~6 KB)
         self.window_size = 1000
-        self.params = params or DEFAULT_PARAMS
+        self.params = dict(params) if params is not None else dict(DEFAULT_PARAMS)
         self.sim = ECGSimulator(seed=seed, fs=self.fs)
         self.buffer = np.zeros(self.buffer_size, dtype=np.float32)
         self.accumulated = 0
@@ -39,7 +42,16 @@ class StreamingMonitor:
         self.cleaned_trace = np.zeros(self.window_size, dtype=np.float32)
         self.detected_peaks = []
 
-    def set_scenario(self, scenario: str, wander: bool = False, motion: bool = False, emg: bool = False):
+    def set_scenario(
+        self,
+        scenario: str,
+        wander: bool = False,
+        motion: bool = False,
+        emg: bool = False,
+    ) -> None:
+        """Select a supported synthetic rhythm and optional artifact sources."""
+        if scenario not in {"normal", "vt", "vf"}:
+            raise ValueError("scenario must be one of: normal, vt, vf")
         if scenario != self.scenario:
             self.onset_time = None if scenario == "normal" else self.sim.t
             self.alarm_time = None
@@ -48,7 +60,12 @@ class StreamingMonitor:
         self.motion = motion
         self.emg = emg
 
-    def step(self, chunk_samples: int = 25):
+    def step(self, chunk_samples: int = 25) -> None:
+        """Advance the synthetic stream and refresh detector state for one chunk."""
+        if isinstance(chunk_samples, bool) or not isinstance(chunk_samples, int):
+            raise TypeError("chunk_samples must be an integer")
+        if not 1 <= chunk_samples <= self.buffer_size:
+            raise ValueError("chunk_samples must be between 1 and the buffer size")
         # Shift buffer left by chunk_samples
         self.buffer[:-chunk_samples] = self.buffer[chunk_samples:]
         # Fill new samples from simulator
@@ -85,19 +102,28 @@ class StreamingMonitor:
             if self.current_state["alarm"] and self.onset_time is not None and self.alarm_time is None:
                 self.alarm_time = self.sim.t
 
-    def run_seconds(self, seconds: float):
+    def run_seconds(self, seconds: float) -> None:
+        """Advance the monitor for a non-negative number of simulated seconds."""
+        if not np.isfinite(seconds) or seconds < 0:
+            raise ValueError("seconds must be a finite non-negative duration")
         steps = int(seconds * self.fs / 25)
         for _ in range(steps):
             self.step(25)
 
-    def get_latency(self) -> float | None:
+    def get_latency(self) -> Optional[float]:
+        """Return seconds from the current scenario onset to first alarm, if any."""
         if self.alarm_time is None or self.onset_time is None:
             return None
         return float(self.alarm_time - self.onset_time)
 
 
 def run_all_validations() -> Dict[str, Any]:
-    """Runs all 8 contract validation checks and returns detailed measured values."""
+    """Run nine deterministic synthetic-data validation checks.
+
+    Returns a mapping with one result per validation, the passed count, total count,
+    and an ``all_passed`` flag. Runtime is dominated by the generated ECG samples and
+    genetic-algorithm fitness evaluations; memory is O(N) for the largest record.
+    """
     results = []
     p = DEFAULT_PARAMS
 

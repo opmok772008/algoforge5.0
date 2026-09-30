@@ -1,25 +1,29 @@
 """
 backend/synthetic.py — Realistic synthetic ECG signal generator with ground truth.
 Supports:
-  - Rhythms: Normal Sinus Rhythm (N), Ventricular Tachycardia (VT), Ventricular Fibrillation (VF),
-    Atrial Fibrillation (A), Other (O), Bradycardia (B), Tachycardia (T).
+  - Demonstration scenarios: normal rhythm, Ventricular Tachycardia (VT), and
+    Ventricular Fibrillation (VF).
   - Noise: Baseline wander, Motion artifact, Severe EMG burst.
   - Generates ground-truth R-peak locations for quantitative accuracy and jitter benchmarking.
 """
 
 from __future__ import annotations
 import math
-from typing import Dict, List, Tuple, Any
+from typing import Any, Dict, List
 import numpy as np
 
 FS = 250
 
 
 class SeededRNG:
-    def __init__(self, seed: int = 42):
+    """Small deterministic pseudo-random generator used by repeatable demos."""
+
+    def __init__(self, seed: int = 42) -> None:
+        """Initialize the generator from an integer seed."""
         self.state = int(seed) & 0xFFFFFFFF
 
     def next(self) -> float:
+        """Return the next deterministic value in the half-open interval [0, 1)."""
         # Mulberry32 PRNG for deterministic, reproducible pseudo-random numbers
         self.state = (self.state + 0x6D2B79F5) & 0xFFFFFFFF
         t = (self.state ^ (self.state >> 15)) * (1 | self.state)
@@ -29,6 +33,7 @@ class SeededRNG:
         return res / 4294967296.0
 
     def gauss(self) -> float:
+        """Return one standard-normal sample using the Box-Muller transform."""
         # Box-Muller transform
         u1 = max(1e-12, self.next())
         u2 = self.next()
@@ -36,12 +41,19 @@ class SeededRNG:
 
 
 def gaussian_peak(x: float, m: float, s: float, a: float) -> float:
+    """Evaluate a Gaussian pulse with center ``m``, width ``s``, and amplitude ``a``."""
+    if not math.isfinite(s) or s <= 0.0:
+        raise ValueError("s must be a finite positive width")
     return a * math.exp(-((x - m) * (x - m)) / (2.0 * s * s))
 
 
 class ECGSimulator:
-    """Simulates multi-scenario ECG leads sample-by-sample or in blocks."""
-    def __init__(self, seed: int = 42, fs: int = FS):
+    """Generate deterministic synthetic ECG samples and known R-peak locations."""
+
+    def __init__(self, seed: int = 42, fs: int = FS) -> None:
+        """Create a simulator; ``fs`` is the positive sample rate in hertz."""
+        if isinstance(fs, bool) or not isinstance(fs, int) or fs < 1:
+            raise ValueError("fs must be a positive integer sampling rate")
         self.fs = fs
         self.rng = SeededRNG(seed)
         self.phase = 0.0
@@ -51,7 +63,16 @@ class ECGSimulator:
         self.index = 0
         self.ground_truth_rpeaks: List[int] = []
 
-    def next_sample(self, scenario: str = "normal", wander: bool = False, motion: bool = False, emg: bool = False) -> float:
+    def next_sample(
+        self,
+        scenario: str = "normal",
+        wander: bool = False,
+        motion: bool = False,
+        emg: bool = False,
+    ) -> float:
+        """Advance the simulator by one sample for ``normal``, ``vt``, or ``vf``."""
+        if scenario not in {"normal", "vt", "vf"}:
+            raise ValueError("scenario must be one of: normal, vt, vf")
         t = self.t + 1.0 / self.fs
         self.t = t
         i = self.index
@@ -105,7 +126,23 @@ class ECGSimulator:
 
         return x
 
-    def generate_record(self, seconds: float, scenario: str = "normal", wander: bool = False, motion: bool = False, emg: bool = False) -> Dict[str, Any]:
+    def generate_record(
+        self,
+        seconds: float,
+        scenario: str = "normal",
+        wander: bool = False,
+        motion: bool = False,
+        emg: bool = False,
+    ) -> Dict[str, Any]:
+        """Generate a record dictionary with signal, ground truth, rate, and scenario.
+
+        ``seconds`` must be a finite positive duration. The returned signal has
+        ``int(seconds * fs)`` float32 samples; peak indices use the same sample clock.
+        """
+        if not math.isfinite(seconds) or seconds <= 0.0:
+            raise ValueError("seconds must be a finite positive duration")
+        if scenario not in {"normal", "vt", "vf"}:
+            raise ValueError("scenario must be one of: normal, vt, vf")
         num_samples = int(seconds * self.fs)
         signal = np.empty(num_samples, dtype=np.float32)
         for i in range(num_samples):

@@ -4,20 +4,17 @@ Serves both the REST API and the interactive website.
 """
 
 from __future__ import annotations
-import asyncio
-import io
-import os
 import time
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
-from fastapi import FastAPI, File, UploadFile, BackgroundTasks, HTTPException
+from fastapi import FastAPI, File, UploadFile, BackgroundTasks, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, FiniteFloat
 
 from backend.dsp import clean_baseline, detect_rpeaks, compute_sqi
 from backend.fuzzy import evaluate_fuzzy
@@ -31,8 +28,8 @@ INDEX_HTML = BASE_DIR / "index.html"
 FRONTEND_HTML = BASE_DIR / "FRONTEND.html"
 
 app = FastAPI(
-    title="Fuzzy-Evolutionary ICU Arrhythmia Pipeline API",
-    description="Backend for real-time noise-resilient arrhythmia detection, fuzzy inference, and GA optimization",
+    title="Streaming ECG Arrhythmia Analysis Demo API",
+    description="Research demo API for synthetic ECG streaming, signal analysis, fuzzy status rules, and detector parameter optimization",
     version="1.0.0",
 )
 
@@ -67,18 +64,19 @@ class StreamRequest(BaseModel):
 
 
 class AnalyzeRequest(BaseModel):
-    samples: List[float]
-    fs: Optional[int] = 250
+    samples: List[FiniteFloat]
+    fs: Optional[int] = Field(250, ge=50, le=2000)
 
 
 class OptimizeRequest(BaseModel):
-    iterations: Optional[int] = 20
+    iterations: Optional[int] = Field(20, ge=1, le=200)
     seed: Optional[int] = 5
 
 
 # --- Root & Static Endpoints ---
 @app.get("/", response_class=HTMLResponse)
-async def serve_index():
+async def serve_index() -> Response:
+    """Serve the primary website entry page, with a small API fallback."""
     if INDEX_HTML.exists():
         return FileResponse(INDEX_HTML)
     if FRONTEND_HTML.exists():
@@ -87,14 +85,16 @@ async def serve_index():
 
 
 @app.get("/FRONTEND.html", response_class=HTMLResponse)
-async def serve_frontend_html():
+async def serve_frontend_html() -> Response:
+    """Serve the standalone frontend document."""
     if FRONTEND_HTML.exists():
         return FileResponse(FRONTEND_HTML)
     return FileResponse(INDEX_HTML)
 
 
 @app.get("/sample_ecg.csv")
-async def serve_sample_csv():
+async def serve_sample_csv() -> FileResponse:
+    """Download the bundled sample ECG record."""
     sample_path = BASE_DIR / "sample_ecg.csv"
     if sample_path.exists():
         return FileResponse(sample_path, media_type="text/csv", filename="sample_ecg.csv")
@@ -104,10 +104,11 @@ async def serve_sample_csv():
 # --- Health & Diagnostic Endpoints ---
 @app.get("/health")
 @app.get("/api/health")
-async def health_check():
+async def health_check() -> Dict[str, Any]:
+    """Return service health, active settings, and current buffer usage."""
     return {
         "status": "online",
-        "service": "Fuzzy-Evolutionary ICU Arrhythmia Pipeline",
+        "service": "Streaming ECG Arrhythmia Analysis Demo",
         "backend": "FastAPI / Python",
         "version": "1.0.0",
         "active_params": active_params,
@@ -118,7 +119,8 @@ async def health_check():
 
 # --- Parameter Management Endpoints ---
 @app.get("/api/params")
-async def get_params():
+async def get_params() -> Dict[str, Any]:
+    """Return default and currently active detector parameters."""
     return {
         "default": DEFAULT_PARAMS,
         "active": active_params,
@@ -126,7 +128,8 @@ async def get_params():
 
 
 @app.post("/api/params")
-async def set_params(params: ParamsModel):
+async def set_params(params: ParamsModel) -> Dict[str, Any]:
+    """Replace active detector settings after Pydantic range validation."""
     global active_params, global_monitor
     active_params = params.model_dump()
     global_monitor.params = active_params
@@ -135,7 +138,7 @@ async def set_params(params: ParamsModel):
 
 # --- Live Streaming Pipeline Endpoint ---
 @app.post("/api/stream")
-async def stream_tick(req: StreamRequest):
+async def stream_tick(req: StreamRequest) -> Dict[str, Any]:
     """
     Simulates one real-time streaming time-step (25 samples = 100 ms).
     Cleans signal, detects R-peaks with 200 ms refractory blanking, evaluates SQI,
@@ -169,7 +172,7 @@ async def stream_tick(req: StreamRequest):
 
 # --- RR-Feature Analysis & ECG Upload Endpoints ---
 @app.post("/api/analyze")
-async def analyze_ecg(req: AnalyzeRequest):
+async def analyze_ecg(req: AnalyzeRequest) -> Dict[str, Any]:
     """
     Full RR-interval feature extraction, HRV metrics, rhythm classification, and advice.
     """
@@ -180,7 +183,11 @@ async def analyze_ecg(req: AnalyzeRequest):
 
 
 @app.post("/api/upload")
-async def upload_ecg_file(file: UploadFile = File(...), fs: int = 300, column_idx: int = 0):
+async def upload_ecg_file(
+    file: UploadFile = File(...),
+    fs: int = Query(300, ge=50, le=1000),
+    column_idx: int = Query(0, ge=0),
+) -> Dict[str, Any]:
     """
     Accepts CSV, TSV, or TXT file upload, parses numeric columns, and performs analysis.
     """
@@ -234,7 +241,8 @@ async def upload_ecg_file(file: UploadFile = File(...), fs: int = 300, column_id
 
 
 # --- Genetic Algorithm Optimization Endpoints ---
-def _run_ga_job(job_id: str, iterations: int, seed: int):
+def _run_ga_job(job_id: str, iterations: int, seed: int) -> None:
+    """Run one optimization in a background task and store its progress."""
     ga = GeneticAlgorithm(seed=seed)
     active_jobs[job_id]["convergence"].append({
         "iter": 0,
@@ -269,7 +277,10 @@ def _run_ga_job(job_id: str, iterations: int, seed: int):
 
 
 @app.post("/api/optimize")
-async def start_optimization(req: OptimizeRequest, background_tasks: BackgroundTasks):
+async def start_optimization(
+    req: OptimizeRequest, background_tasks: BackgroundTasks
+) -> Dict[str, str]:
+    """Create a bounded optimization job and return its pollable job identifier."""
     job_id = str(uuid.uuid4())
     active_jobs[job_id] = {
         "job_id": job_id,
@@ -277,12 +288,15 @@ async def start_optimization(req: OptimizeRequest, background_tasks: BackgroundT
         "convergence": [],
         "best_params": None,
     }
-    background_tasks.add_task(_run_ga_job, job_id, req.iterations or 20, req.seed or 5)
+    iterations = req.iterations if req.iterations is not None else 20
+    seed = req.seed if req.seed is not None else 5
+    background_tasks.add_task(_run_ga_job, job_id, iterations, seed)
     return {"job_id": job_id, "status": "running"}
 
 
 @app.get("/api/optimize/{job_id}")
-async def get_optimization_status(job_id: str):
+async def get_optimization_status(job_id: str) -> Dict[str, Any]:
+    """Return progress for a known in-memory optimization job."""
     if job_id not in active_jobs:
         raise HTTPException(status_code=404, detail="Job not found")
     return active_jobs[job_id]
@@ -293,8 +307,8 @@ async def get_optimization_status(job_id: str):
 @app.post("/api/validation")
 @app.get("/api/tests")
 @app.post("/api/tests")
-async def run_tests_endpoint():
-    """Runs all 8 problem statement verification tests."""
+async def run_tests_endpoint() -> Dict[str, Any]:
+    """Run the nine synthetic-data verification checks and return their results."""
     results = run_all_validations()
     return results
 

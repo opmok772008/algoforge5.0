@@ -11,16 +11,53 @@ Ported from open-source ECG signal processing algorithms:
 """
 
 from __future__ import annotations
-import math
-from typing import Dict, List, Any, Optional
+from typing import Any, Dict, List
 import numpy as np
 
 
 def analyze_rr_features(signal: np.ndarray, fs: int = 250) -> Dict[str, Any]:
     """
-    Computes full RR interval features, HRV metrics, rhythm classification, and clinical advice.
+    Extract R-peak, RR-interval, heart-rate, and HRV metrics from one ECG trace.
+
+    Parameters
+    ----------
+    signal : np.ndarray
+        Finite, one-dimensional ECG samples. Traces shorter than two seconds return
+        an ``Insufficient beats`` result without attempting peak detection.
+    fs : int
+        Sampling rate in hertz; must be a positive integer.
+
+    Returns
+    -------
+    Dict[str, Any]
+        JSON-compatible metrics: peak indices, filtered samples, RR intervals,
+        heart rate, SDNN, RMSSD, NN50, rhythm label, and explanatory advice.
+
+    Raises
+    ------
+    ValueError
+        If the trace is non-numeric, not one-dimensional, or contains NaN/inf.
+    TypeError, ValueError
+        If ``fs`` is not a positive integer.
+
+    Complexity
+    ----------
+    Time and auxiliary space are O(N) for N ECG samples.
     """
-    n = len(signal)
+    if isinstance(fs, bool) or not isinstance(fs, (int, np.integer)):
+        raise TypeError("fs must be an integer sampling rate")
+    if fs < 1:
+        raise ValueError("sampling rate fs must be at least 1 Hz")
+    try:
+        signal = np.asarray(signal, dtype=np.float32)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("signal must contain numeric samples") from exc
+    if signal.ndim != 1:
+        raise ValueError(f"signal must be one-dimensional; got shape {signal.shape}")
+    if not np.all(np.isfinite(signal)):
+        raise ValueError("signal must contain only finite samples")
+
+    n = int(signal.shape[0])
     if n < fs * 2:
         return {
             "p": [],

@@ -16,8 +16,7 @@ Elitism preserves the best solution in every generation.
 """
 
 from __future__ import annotations
-import math
-from typing import Dict, List, Tuple, Any
+from typing import Any, Dict, List
 import numpy as np
 from backend.dsp import clean_baseline, detect_rpeaks
 from backend.synthetic import ECGSimulator, SeededRNG
@@ -35,6 +34,11 @@ _CACHED_TRAIN_SET: List[Dict[str, Any]] = []
 
 
 def get_training_records() -> List[Dict[str, Any]]:
+    """Return the three deterministic synthetic records used to score candidates.
+
+    The records are generated once per process and then reused. Runtime and cached
+    storage are O(KN), where K is the fixed record count and N samples per record.
+    """
     global _CACHED_TRAIN_SET
     if not _CACHED_TRAIN_SET:
         # Create 3 deterministic noisy training records (10 seconds each at 250 Hz)
@@ -52,7 +56,13 @@ def get_training_records() -> List[Dict[str, Any]]:
 
 
 def score_record(record: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, float]:
-    """Scores sensitivity, precision, and peak timing jitter against ground truth."""
+    """Measure detector sensitivity, precision, and timing error for one record.
+
+    ``record`` must contain ``signal``, ``ground_truth``, and ``fs``. ``params`` must
+    contain the detector values ``bw``, ``sm``, ``th``, and ``mw``. Results include
+    the ratios ``se`` and ``ppv``, mean matched-peak error in milliseconds, and TP/FP/FN.
+    The matching pass is O(P*T) for P detections and T true peaks.
+    """
     signal = record["signal"]
     truth = record["ground_truth"]
     fs = record["fs"]
@@ -101,7 +111,11 @@ def score_record(record: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, fl
 
 
 def calculate_fitness(params: Dict[str, Any]) -> float:
-    """Computes mean F1 score minus jitter penalty across all 3 training records."""
+    """Return mean F1 minus a fixed R-peak jitter penalty over training records.
+
+    The objective is ``mean(F1) - 0.005 * mean(jitter_ms)``. The function assumes
+    the detector parameter keys and ranges defined by ``PARAM_BOUNDS``.
+    """
     records = get_training_records()
     total_f1 = 0.0
     total_jitter = 0.0
@@ -122,7 +136,12 @@ def calculate_fitness(params: Dict[str, Any]) -> float:
 
 
 class GeneticAlgorithm:
-    def __init__(self, seed: int = 5, pop_size: int = 14):
+    """Optimize the four detector settings using deterministic tournament selection."""
+
+    def __init__(self, seed: int = 5, pop_size: int = 14) -> None:
+        """Create and score an initial population; ``pop_size`` must be at least two."""
+        if isinstance(pop_size, bool) or not isinstance(pop_size, int) or pop_size < 2:
+            raise ValueError("pop_size must be an integer of at least 2")
         self.rng = SeededRNG(seed)
         self.pop_size = pop_size
         self.generation = 0
@@ -138,6 +157,7 @@ class GeneticAlgorithm:
         self.evaluate_population()
 
     def random_individual(self) -> Dict[str, Any]:
+        """Sample one parameter dictionary inside the configured bounds in O(1)."""
         return {
             "bw": int(round(PARAM_BOUNDS["bw"][0] + self.rng.next() * (PARAM_BOUNDS["bw"][1] - PARAM_BOUNDS["bw"][0]))),
             "sm": int(round(PARAM_BOUNDS["sm"][0] + self.rng.next() * (PARAM_BOUNDS["sm"][1] - PARAM_BOUNDS["sm"][0]))),
@@ -145,7 +165,8 @@ class GeneticAlgorithm:
             "mw": int(round(PARAM_BOUNDS["mw"][0] + self.rng.next() * (PARAM_BOUNDS["mw"][1] - PARAM_BOUNDS["mw"][0]))),
         }
 
-    def evaluate_population(self):
+    def evaluate_population(self) -> None:
+        """Score and sort the current population, updating best and mean fitness."""
         for ind in self.population:
             if "fitness" not in ind:
                 ind["fitness"] = calculate_fitness(ind)
@@ -155,7 +176,11 @@ class GeneticAlgorithm:
         self.mean_fitness = sum(x["fitness"] for x in self.population) / len(self.population)
 
     def step(self) -> Dict[str, Any]:
-        """Evolves population one generation with elitism, crossover, and mutation."""
+        """Evolve one generation and return fitness and best-parameter summaries.
+
+        Elitism copies the current best candidate unchanged. Runtime scales with the
+        population size times the cost of scoring one candidate over all records.
+        """
         # Elitism: retain exact best individual
         new_pop = [dict(self.population[0])]
 

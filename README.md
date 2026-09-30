@@ -1,16 +1,18 @@
-# Fuzzy-Evolutionary ICU Arrhythmia Pipeline
+# Streaming ECG Arrhythmia Analysis Demo
 
 [![GitHub Pages](https://img.shields.io/badge/Live%20Demo-GitHub%20Pages-00e5a3?style=for-the-badge&logo=github)](https://opmok772008.github.io/algoforge4.0/)
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI%20%7C%20Uvicorn-009688?style=for-the-badge&logo=fastapi)](http://localhost:8000/docs)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue?style=for-the-badge&logo=python)](https://python.org)
 
-A complete clinical-grade web application and signal processing pipeline engineered to solve **ICU monitor alarm fatigue**. By combining moving-average baseline removal, adaptive thresholding with a 200 ms refractory period, fuzzy logic false alarm suppression, and Genetic Algorithm optimization with elitism, the pipeline alerts on lethal ventricular rhythms within 3 seconds while holding noisy artifacts for review.
+A multi-file Python/FastAPI research demo for noise-resilient ECG analysis. It generates deterministic normal, ventricular tachycardia (VT), and ventricular fibrillation (VF) signals; removes baseline wander; detects R-peaks; estimates RR/HRV features and signal quality; applies fuzzy alarm/hold rules; and tunes detector parameters with a genetic algorithm. The website also exposes a streaming simulator, ECG upload and analysis, optimization, health, and validation endpoints.
+
+The built-in records are synthetic, and uploaded traces are analyzed with heuristic signal processing. This project is an educational prototype, not a clinical monitor or medical device; its demo results are not clinical performance claims.
 
 ---
 
-## 🎯 Clinical Problem Statement
+## 🎯 Problem Context and Demo Scope
 
-> **Problem**: ICU monitors raise many false alarms from noisy ECG (baseline wander, muscle and motion artifacts), causing alarm fatigue. The system must alert on lethal rhythms within 3 seconds without silencing real events.
+> **Problem context**: ICU monitors can raise false alarms from noisy ECG (baseline wander, muscle and motion artifacts), contributing to alarm fatigue. This project demonstrates a synthetic signal-processing workflow that explores detection and noise-aware alarm logic.
 >
 > **Method**:
 > - **Clean**: Moving-average baseline removal preserves QRS amplitude ($\ge 85\%$).
@@ -18,11 +20,11 @@ A complete clinical-grade web application and signal processing pipeline enginee
 > - **Judge**: Fuzzy rules combine heart rate, rhythm regularity and signal quality into an alarm confidence. Noise-like input is held for review instead of alarming.
 > - **Optimize**: A genetic algorithm tunes four detector settings (`bw`, `sm`, `th`, `mw`) on three noisy records. Fitness is F1 score minus an R-peak jitter penalty, with elitism.
 >
-> **Validation**: Built-in tests check that sensitivity and precision are at least 95% on clean rhythm, jitter under wander is at most 20 ms, QRS amplitude is at least 85% preserved, a severe EMG burst raises no lethal alarm, fuzzy confidence never falls as heart rate rises, the streaming buffer stays fixed at 6 KB, and evolution never loses fitness.
+> **Validation**: The built-in synthetic validation endpoint checks detector sensitivity and precision on generated clean rhythm, timing under baseline wander, QRS amplitude, VT/VF demo alert timing, EMG noise handling, fuzzy confidence monotonicity, fixed streaming-buffer size, and genetic-algorithm elitism. These checks describe simulated records only.
 >
 > **Extras**: RR-feature logic (HR, HRV, RMSSD, NN50) is ported from an open-source ECG repository, and users can upload their own CSV/TXT ECG files.
 >
-> **Limits**: Demo signals are synthetic, and this is a research prototype, not a medical device.
+> **Limits**: Built-in signals are synthetic. Uploaded signals are processed with heuristic algorithms. This prototype is not validated for patient care and is not a medical device.
 
 ---
 
@@ -46,6 +48,17 @@ python run.py
 - **API Health Endpoint**: [http://localhost:8000/api/health](http://localhost:8000/api/health)
 
 *(The frontend also operates in 100% standalone client mode when deployed to GitHub Pages or static hosts).*
+
+### Automated tests and benchmark
+
+Run the regression suite and the repeatable latency/memory benchmark locally:
+
+```bash
+python -m pytest -q
+python benchmark.py
+```
+
+The benchmark generates synthetic records at several lengths and reports median and p95 analysis time, throughput, and Python/NumPy traced peak allocation. It excludes signal-generation time and is not a clinical performance benchmark.
 
 ---
 
@@ -123,7 +136,17 @@ Run via the UI or `GET /api/validation`:
 | `POST` | `/api/upload` | Multipart upload for `.csv`, `.txt`, `.tsv` ECG records |
 | `POST` | `/api/optimize` | Launch Genetic Algorithm parameter tuning job |
 | `GET` | `/api/optimize/{id}` | Poll generation convergence curve and best parameters |
-| `GET` | `/api/validation` | Run all 8 verification assertions with measured values |
+| `GET` | `/api/validation` | Run all 9 verification checks with measured values |
+
+## Render deployment
+
+The root `render.yaml` defines the FastAPI web service, health check, region, and start command. To create or sync the service, connect this GitHub repository as a Render Blueprint and deploy its `main` branch. After it is linked, commits to `main` trigger a new deploy.
+
+## Suggested submission metadata
+
+**Title:** Streaming ECG Arrhythmia Analysis Demo
+
+**Description:** A Python/FastAPI research demo that processes synthetic ECG streams and uploaded sample traces. It removes baseline wander, detects R-peaks, calculates RR/HRV and signal-quality features, applies fuzzy alarm/hold logic to simulated VT/VF rhythms, and tunes detector settings with a genetic algorithm. The app includes a web dashboard, streaming and analysis endpoints, automated tests, and a reproducible latency/memory benchmark. Built-in data is synthetic; this prototype is not intended for clinical use.
 
 ---
 
@@ -132,7 +155,7 @@ Run via the UI or `GET /api/validation`:
 To sync any updates to your GitHub repository:
 ```bash
 git add .
-git commit -m "Add complete FastAPI backend, clinical problem statement architecture, and enhanced frontend"
+git commit -m "Update streaming ECG analysis demo"
 git push origin main
 ```
 

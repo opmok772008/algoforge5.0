@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Fuzzy-Evolutionary ICU Arrhythmia Pipeline</title>
+<title>Streaming ECG Arrhythmia Analysis Demo</title>
+<meta name="description" content="A research demo for synthetic ECG streaming, R-peak detection, RR/HRV analysis, signal quality, and noise-aware fuzzy status decisions.">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&family=Montserrat:wght@600;700;800&display=swap">
 <style>
 :root{
@@ -184,9 +185,9 @@ footer{padding:34px 0 50px;color:var(--mute);font-size:.88rem;border-top:1px sol
     </div>
   </nav>
 
-  <h1>Lethal arrhythmias, found through the noise</h1>
+  <h1>Explore ECG arrhythmia signals through noise</h1>
   <p style="font-size:1.15rem;margin-top:14px">
-    A fuzzy-evolutionary ICU signal pipeline designed to solve <strong>alarm fatigue</strong>. Moving-average baseline subtraction preserves QRS amplitude, an adaptive detector with a <strong>200 ms refractory period</strong> identifies R-peaks, and fuzzy rules hold noisy inputs for review while triggering lethal alarms within 3 seconds.
+    A research demo using synthetic ECG scenarios and uploaded sample traces. It removes baseline wander, detects R-peaks with a <strong>200 ms refractory period</strong>, computes RR/HRV and signal-quality features, and demonstrates fuzzy alarm/hold decisions. Simulated VT/VF alerts are not validated for patient monitoring.
   </p>
 
   <svg class="ecgline" viewBox="0 0 1200 80" preserveAspectRatio="none" aria-hidden="true">
@@ -196,8 +197,8 @@ footer{padding:34px 0 50px;color:var(--mute);font-size:.88rem;border-top:1px sol
 
 <!-- Live Monitor Section -->
 <section id="lab"><div class="wrap">
-  <h2>Live ICU Monitor</h2>
-  <p>Select a rhythm scenario, inject real-time patient interference, and observe how the pipeline cleans the sensor waveform, extracts beats, suppresses noise, and alerts on lethal events.</p>
+  <h2>Synthetic Streaming ECG Monitor</h2>
+  <p>Select a synthetic rhythm, add simulated artifacts, and observe baseline cleaning, beat detection, signal-quality estimates, and demo alarm/hold decisions.</p>
   
   <div class="grid">
     <!-- Left: Waveforms -->
@@ -261,8 +262,8 @@ footer{padding:34px 0 50px;color:var(--mute);font-size:.88rem;border-top:1px sol
 
 <!-- Problem Statement & Architecture Section -->
 <section id="problem"><div class="wrap">
-  <h2>Clinical Problem & Pipeline Architecture</h2>
-  <p>Standard ICU cardiorespiratory monitors raise up to 88% false alarms from transient electrode displacement and muscle spasms, inducing clinical alarm fatigue. Here is how this pipeline solves each constraint:</p>
+  <h2>Problem Context & Pipeline Architecture</h2>
+  <p>ICU monitor alarm fatigue motivates this research prototype. The architecture below shows how the synthetic demo filters baseline wander, detects beats, reports signal quality, and illustrates noise-aware status decisions; it is not a clinical monitoring system.</p>
   
   <div class="arch-grid">
     <div class="arch-card">
@@ -294,7 +295,7 @@ footer{padding:34px 0 50px;color:var(--mute);font-size:.88rem;border-top:1px sol
 <!-- Repo Pipeline Section -->
 <section id="ecgrepo"><div class="wrap">
   <h2>RR-Feature ECG Analyzer</h2>
-  <p>Generates a 10-second ECG record across 5 arrhythmia types, detecting R-peaks and computing comprehensive clinical Heart Rate Variability (HRV) metrics.</p>
+  <p>Analyzes sample ECG traces with heuristic R-peak and RR-interval methods, reporting heart rate, HRV metrics, and a rule-based rhythm summary for educational use.</p>
   
   <div class="panel">
     <div class="ctl" role="radiogroup" aria-label="Signal type">
@@ -364,7 +365,7 @@ Default settings: bw=200 sm=5 th=0.30 mw=25.</pre>
 <!-- Automated Validation Suite Section -->
 <section id="tests"><div class="wrap">
   <h2>Automated Verification Test Suite</h2>
-  <p>Each check is an exact assertion mirroring the constraints in the clinical problem statement. They run deterministically with fixed random seeds.</p>
+  <p>Each check measures a synthetic demo target using deterministic records and fixed random seeds; results describe generated data only.</p>
   
   <div class="ctl" style="align-items:center">
     <button class="pri" id="rt" type="button">Run All Tests</button>

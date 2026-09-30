@@ -56,8 +56,12 @@ def trapmf(x: Optional[float], a: float, b: float, c: float, d: float) -> float:
     - Time Complexity: O(1) constant time.
     - Space Complexity: O(1) constant space.
     """
+    if not (a <= b <= c <= d):
+        raise ValueError("trapezoid bounds must satisfy a <= b <= c <= d")
     if x is None:
         return 0.0
+    if not np.isfinite(x):
+        raise ValueError("x must be finite or None")
     val_ab: float = (x - a) / (b - a) if b != a else 1.0
     val_dc: float = (d - x) / (d - c) if d != c else 1.0
     membership: float = min(val_ab, 1.0, val_dc)
@@ -104,6 +108,13 @@ def evaluate_fuzzy(hr: Optional[float], cv: Optional[float], q: float) -> Dict[s
     - Time Complexity: O(1) evaluation of fixed trapezoidal boundaries.
     - Space Complexity: O(1) static dictionary allocation.
     """
+    if not np.isfinite(q) or not 0.0 <= q <= 1.0:
+        raise ValueError("q must be a finite value in [0.0, 1.0]")
+    if hr is not None and not np.isfinite(hr):
+        raise ValueError("hr must be finite or None")
+    if cv is not None and (not np.isfinite(cv) or cv < 0.0):
+        raise ValueError("cv must be finite, non-negative, or None")
+
     m: Dict[str, float] = {
         "hrHigh": 0.0,
         "hrVery": 0.0,

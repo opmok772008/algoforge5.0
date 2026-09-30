@@ -11,10 +11,31 @@ Compliant with PEP-484 type annotations and structured complexity analysis.
 
 from __future__ import annotations
 import numpy as np
-from scipy import signal as sp_signal
-from typing import Dict, List, Tuple, Any, Optional
+from typing import Any, Dict, List
 
 FS_DEFAULT: int = 250  # Hz default sampling rate
+
+
+def _as_1d_signal(values: np.ndarray, name: str = "signal") -> np.ndarray:
+    """Return finite float32 samples, rejecting malformed signal shapes."""
+    try:
+        signal = np.asarray(values, dtype=np.float32)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must contain numeric samples") from exc
+    if signal.ndim != 1:
+        raise ValueError(f"{name} must be one-dimensional; got shape {signal.shape}")
+    if not np.all(np.isfinite(signal)):
+        raise ValueError(f"{name} must contain only finite samples")
+    return signal
+
+
+def _positive_int(value: int, name: str) -> int:
+    """Validate an integer-valued sample count or sampling rate."""
+    if isinstance(value, bool) or not isinstance(value, (int, np.integer)):
+        raise TypeError(f"{name} must be an integer")
+    if value < 1:
+        raise ValueError(f"{name} must be at least 1")
+    return int(value)
 
 
 def moving_average(x: np.ndarray, window: int) -> np.ndarray:
@@ -35,7 +56,7 @@ def moving_average(x: np.ndarray, window: int) -> np.ndarray:
 
     Pre-conditions
     --------------
-    - `x` must be a 1D real-valued numpy array.
+    - `x` must be a finite, 1D real-valued sequence or numpy array.
     - `window` >= 1.
 
     Post-conditions
@@ -48,8 +69,8 @@ def moving_average(x: np.ndarray, window: int) -> np.ndarray:
     - Time Complexity: O(N) where N is number of samples.
     - Space Complexity: O(N) auxiliary space for cumulative sum buffer.
     """
-    if not isinstance(x, np.ndarray):
-        x = np.asarray(x, dtype=np.float32)
+    x = _as_1d_signal(x, "x")
+    window = _positive_int(window, "window")
 
     n: int = int(x.shape[0])
     if window <= 1 or n == 0:
@@ -89,8 +110,8 @@ def clean_baseline(x: np.ndarray, bw: int) -> np.ndarray:
 
     Pre-conditions
     --------------
-    - `x` is a 1D float32 or float64 numpy array.
-    - `bw` >= 10 samples.
+    - `x` is finite and one-dimensional.
+    - `bw` >= 1 sample.
 
     Post-conditions
     ---------------
@@ -102,8 +123,8 @@ def clean_baseline(x: np.ndarray, bw: int) -> np.ndarray:
     - Time Complexity: O(N) linear time filter.
     - Space Complexity: O(N) auxiliary memory.
     """
-    if not isinstance(x, np.ndarray):
-        x = np.asarray(x, dtype=np.float32)
+    x = _as_1d_signal(x, "x")
+    bw = _positive_int(bw, "bw")
     baseline: np.ndarray = moving_average(x, bw)
     cleaned: np.ndarray = x - baseline
     return cleaned
@@ -156,15 +177,22 @@ def detect_rpeaks(
     - Time Complexity: O(N) linear pass across the discrete sample window.
     - Space Complexity: O(N) for difference and energy envelopes.
     """
-    if not isinstance(y, np.ndarray):
-        y = np.asarray(y, dtype=np.float32)
+    y = _as_1d_signal(y, "y")
+    sm = _positive_int(sm, "sm")
+    mw = _positive_int(mw, "mw")
+    fs = _positive_int(fs, "fs")
+    th = float(th)
+    if fs < 50:
+        raise ValueError("fs must be at least 50 Hz")
+    if not np.isfinite(th) or th <= 0.0:
+        raise ValueError("th must be a finite positive number")
 
     n: int = int(y.shape[0])
     if n < 3:
         return {"pk": [], "threshold": 0.0, "energy": np.zeros(n, dtype=np.float32)}
 
     # Step 1: Smooth
-    s: np.ndarray = moving_average(y, max(1, int(sm)))
+    s: np.ndarray = moving_average(y, sm)
 
     # Step 2: Differentiate & Square (emphasizing QRS steep slopes)
     diff: np.ndarray = np.zeros(n, dtype=np.float32)
@@ -172,7 +200,7 @@ def detect_rpeaks(
     energy: np.ndarray = diff * diff
 
     # Step 3: Moving Window Integration
-    e_int: np.ndarray = moving_average(energy, max(1, int(mw)))
+    e_int: np.ndarray = moving_average(energy, mw)
 
     # Step 4: Adaptive Threshold Calculation
     p97: float = float(np.percentile(e_int, 97))
@@ -217,11 +245,10 @@ def compute_sqi(y: np.ndarray) -> float:
 
     Complexity
     ----------
-    - Time Complexity: O(N log N) dominated by percentile sort.
-    - Space Complexity: O(N) for absolute derivative vector.
+    - Time: Linear difference passes plus NumPy percentile selection.
+    - Space: O(N) for derivative and absolute-value vectors.
     """
-    if not isinstance(y, np.ndarray):
-        y = np.asarray(y, dtype=np.float32)
+    y = _as_1d_signal(y, "y")
 
     n: int = int(y.shape[0])
     if n < 5:
